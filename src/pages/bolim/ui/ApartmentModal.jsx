@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 
 const UV_KEY = import.meta.env.VITE_UV_KEY
 const GPT_KEY = import.meta.env.VITE_GPT_KEY
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 async function transcribe(blob) {
   const fd = new FormData()
@@ -463,7 +464,7 @@ export function ApartmentModal({
       setPhase('loading')
 
       try {
-        const res = await fetch('/api/contract/generate', {
+        const res = await fetch(`${API_BASE}/api/contract/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
