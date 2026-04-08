@@ -23,6 +23,19 @@ function getImg(map, num) {
   return entry ? entry[1].default : null
 }
 
+async function imgToBase64(src) {
+  try {
+    const res = await fetch(src)
+    const blob = await res.blob()
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result)
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
 
 const STATUS_COLOR = {
   EMPTY:    { base: 'rgba(34,197,94,0.5)',  hover: 'rgba(34,197,94,0.8)'  },
@@ -123,10 +136,25 @@ export default function BolimPage() {
   const apts1 = BLOCKS_DATA[blockId]?.['1-FLOOR']?.[bolimNum] ?? []
   const apts2 = BLOCKS_DATA[blockId]?.['2-FLOOR']?.[bolimNum] ?? []
 
-  function handleSelect(floor) {
-    return (index) => {
+  async function handleSelect(floor) {
+    return async (index) => {
       const apt = (floor === 1 ? apts1 : apts2)[index]
-      if (apt) setModal({ apartment: apt, floor })
+      if (!apt) return
+
+      const imgSrc = floor === 1 ? img1 : img2
+      const overlay = floor === 1 ? overlay1 : overlay2
+      const polygonPoints = overlay?.polygons?.[index]?.points ?? null
+
+      // Rasmni base64 ga o'girish (fon shaklida, modal ochilishini bloklamaydi)
+      const floorImageBase64 = imgSrc ? await imgToBase64(imgSrc) : null
+
+      setModal({
+        apartment: apt,
+        floor,
+        floorImageBase64,
+        overlayViewBox: overlay?.viewBox ?? null,
+        selectedPolygonPoints: polygonPoints,
+      })
     }
   }
 
@@ -156,14 +184,14 @@ export default function BolimPage() {
           <div className="px-4 py-3 text-sm font-semibold text-primary-foreground bg-primary tracking-widest uppercase select-none shrink-0">
             1-Qavat
           </div>
-          <PanZoomPane src={img1} alt={`${bolimNum}-bo'lim 1-qavat`} overlay={overlay1} apartments={apts1} onSelect={handleSelect(1)} />
+          <PanZoomPane src={img1} alt={`${bolimNum}-bo'lim 1-qavat`} overlay={overlay1} apartments={apts1} onSelect={async (i) => (await handleSelect(1))(i)} />
         </div>
 
         <div className="flex flex-col flex-1 min-w-0">
           <div className="px-4 py-3 text-sm font-semibold text-primary-foreground bg-primary tracking-widest uppercase select-none shrink-0">
             2-Qavat
           </div>
-          <PanZoomPane src={img2} alt={`${bolimNum}-bo'lim 2-qavat`} overlay={overlay2} apartments={apts2} onSelect={handleSelect(2)} />
+          <PanZoomPane src={img2} alt={`${bolimNum}-bo'lim 2-qavat`} overlay={overlay2} apartments={apts2} onSelect={async (i) => (await handleSelect(2))(i)} />
         </div>
       </div>
 
@@ -173,6 +201,9 @@ export default function BolimPage() {
           floor={modal.floor}
           blockId={blockId?.toUpperCase()}
           bolimNum={bolimNum}
+          floorImageBase64={modal.floorImageBase64}
+          overlayViewBox={modal.overlayViewBox}
+          selectedPolygonPoints={modal.selectedPolygonPoints}
           onClose={() => setModal(null)}
         />
       )}
