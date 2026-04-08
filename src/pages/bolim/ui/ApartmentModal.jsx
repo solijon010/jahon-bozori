@@ -1,9 +1,10 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
-import { Loader2, Mic, RotateCcw } from 'lucide-react'
+import { CheckCircle2, Download, Loader2, Mic, RotateCcw, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 const UV_KEY = import.meta.env.VITE_UV_KEY
 const GPT_KEY = import.meta.env.VITE_GPT_KEY
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 async function transcribe(blob) {
   const fd = new FormData()
@@ -220,17 +221,226 @@ function VoiceRecorder({ onExtracted }) {
   )
 }
 
-const EMPTY = { ism: '', familiya: '', boshlangich: '', oylar: '12', passport: '', manzil: '' }
+// ── Contract Loading Screen ──────────────────────────────────────────────────
+const STEPS = [
+  { label: "Ma'lumotlar tekshirilmoqda...",   duration: 800  },
+  { label: 'Shartnoma shabloni yuklanmoqda...', duration: 1000 },
+  { label: 'Imzolar va muhrlar qo\'yilmoqda...', duration: 1200 },
+  { label: 'PDF yaratilmoqda...',               duration: 1500 },
+  { label: 'Telegram\'ga yuborilmoqda...',       duration: 600  },
+]
 
-export function ApartmentModal({ apartment, floor, blockId, bolimNum, onClose }) {
-  const [form, setForm] = useState(EMPTY)
-  const [flash, setFlash] = useState(new Set())
+function ContractLoading({ action }) {
+  const [step, setStep] = useState(0)
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    let current = 0
+    function next() {
+      if (current >= STEPS.length - 1) return
+      const timer = setTimeout(() => {
+        current++
+        setStep(current)
+        next()
+      }, STEPS[current].duration)
+      return timer
+    }
+    const t = next()
+    return () => clearTimeout(t)
+  }, [])
+
+  const progress = Math.min(((step + 1) / STEPS.length) * 100, 95)
+  const isReservation = action === 'bron'
+
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 gap-8 px-8">
+      {/* Animated document icon */}
+      <div className="relative">
+        <div
+          className="w-28 h-28 rounded-2xl flex items-center justify-center shadow-2xl"
+          style={{
+            background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5986 100%)',
+            animation: 'docPulse 1.8s ease-in-out infinite',
+          }}
+        >
+          <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
+            <rect x="10" y="6" width="34" height="44" rx="4" fill="white" opacity="0.15"/>
+            <rect x="10" y="6" width="34" height="44" rx="4" stroke="white" strokeWidth="2"/>
+            <rect x="16" y="36" width="6" height="6" rx="1" fill="#c9a84c" opacity="0.9"/>
+            <line x1="16" y1="18" x2="38" y2="18" stroke="white" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
+            <line x1="16" y1="24" x2="38" y2="24" stroke="white" strokeWidth="2" strokeLinecap="round" opacity="0.5"/>
+            <line x1="16" y1="30" x2="30" y2="30" stroke="white" strokeWidth="2" strokeLinecap="round" opacity="0.4"/>
+            {/* Writing effect */}
+            <line x1="24" y1="39" x2="38" y2="39" stroke="#c9a84c" strokeWidth="1.5" strokeLinecap="round" opacity="0.8"/>
+            <line x1="24" y1="43" x2="34" y2="43" stroke="#c9a84c" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+          </svg>
+        </div>
+        {/* Orbit ring */}
+        <div
+          className="absolute inset-0 rounded-2xl border-2 border-amber-400/40"
+          style={{ animation: 'spin 3s linear infinite' }}
+        />
+      </div>
+
+      <div className="text-center space-y-2 w-full max-w-xs">
+        <p className="text-xl font-bold text-foreground">
+          {isReservation ? 'Bron shartnomasi' : 'Sotuv shartnomasi'}
+        </p>
+        <p className="text-sm text-muted-foreground">tayyorlanmoqda...</p>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full max-w-xs">
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${progress}%`,
+              background: 'linear-gradient(90deg, #1e3a5f, #c9a84c)',
+            }}
+          />
+        </div>
+        <div className="mt-3 text-xs text-center text-muted-foreground min-h-[18px] transition-all duration-300">
+          {STEPS[step]?.label}
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes docPulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(30,58,95,0.3); }
+          50% { transform: scale(1.04); box-shadow: 0 0 0 16px rgba(30,58,95,0); }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ── Contract Success Screen ──────────────────────────────────────────────────
+function ContractSuccess({ contractNum, downloadUrl, filename, action, onClose }) {
+  const isReservation = action === 'bron'
+
+  function handleDownload() {
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = filename
+    a.click()
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 gap-6 px-8">
+      {/* Success icon */}
+      <div
+        className="w-24 h-24 rounded-full flex items-center justify-center"
+        style={{
+          background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+          animation: 'popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+        }}
+      >
+        <CheckCircle2 size={52} color="white" strokeWidth={2} />
+      </div>
+
+      <div className="text-center space-y-1">
+        <p className="text-xl font-bold text-foreground">Shartnoma tayyor!</p>
+        <p className="text-sm text-muted-foreground">
+          {isReservation ? 'Bron' : 'Sotuv'} shartnomasi muvaffaqiyatli yaratildi
+        </p>
+      </div>
+
+      {/* Contract number card */}
+      <div className="w-full max-w-xs bg-muted/50 border border-border rounded-xl px-5 py-4 text-center">
+        <p className="text-xs text-muted-foreground mb-1 uppercase tracking-widest font-semibold">Shartnoma raqami</p>
+        <p className="text-lg font-bold text-foreground font-mono tracking-wide">{contractNum}</p>
+      </div>
+
+      {/* Telegram notice */}
+      <div className="flex items-center gap-3 w-full max-w-xs bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+        <span className="text-2xl">✈️</span>
+        <div>
+          <p className="text-sm font-semibold text-blue-900">Telegram'ga yuborildi</p>
+          <p className="text-xs text-blue-600">Operatorga bildirishnoma ketdi</p>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-3 w-full max-w-xs">
+        <button
+          onClick={handleDownload}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-white text-base active:scale-[0.98] transition-all"
+          style={{ background: 'linear-gradient(135deg, #1e3a5f, #2d5986)' }}
+        >
+          <Download size={18} />
+          Yuklab olish
+        </button>
+        <button
+          onClick={onClose}
+          className="px-5 py-3.5 rounded-xl font-semibold text-foreground border border-border hover:bg-accent transition-colors"
+        >
+          Yopish
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes popIn {
+          from { transform: scale(0.5); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ── Contract Error Screen ────────────────────────────────────────────────────
+function ContractError({ message, onRetry }) {
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 gap-6 px-8">
+      <div className="w-20 h-20 rounded-full flex items-center justify-center bg-red-100">
+        <XCircle size={44} className="text-red-500" />
+      </div>
+      <div className="text-center space-y-1">
+        <p className="text-lg font-bold text-foreground">Xatolik yuz berdi</p>
+        <p className="text-sm text-muted-foreground">{message}</p>
+      </div>
+      <button
+        onClick={onRetry}
+        className="px-8 py-3 rounded-xl font-semibold bg-foreground text-background hover:opacity-90 transition-opacity"
+      >
+        Qayta urinib ko'rish
+      </button>
+    </div>
+  )
+}
+
+// ── Main Modal ───────────────────────────────────────────────────────────────
+const EMPTY = { ism: '', familiya: '', boshlangich: '', oylar: '12', passport: '', manzil: '' }
+
+export function ApartmentModal({
+  apartment,
+  floor,
+  blockId,
+  bolimNum,
+  floorImageBase64,
+  overlayViewBox,
+  selectedPolygonPoints,
+  onClose,
+}) {
+  const [form, setForm] = useState(EMPTY)
+  const [flash, setFlash] = useState(new Set())
+  // 'idle' | 'loading' | 'success' | 'error'
+  const [phase, setPhase] = useState('idle')
+  const [contractNum, setContractNum] = useState('')
+  const [downloadUrl, setDownloadUrl] = useState(null)
+  const [downloadFilename, setDownloadFilename] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [currentAction, setCurrentAction] = useState('bron')
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape' && phase === 'idle') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [onClose, phase])
 
   if (!apartment) return null
 
@@ -247,12 +457,53 @@ export function ApartmentModal({ apartment, floor, blockId, bolimNum, onClose })
     setTimeout(() => setFlash(new Set()), 1200)
   }
 
-  function handleSubmit(action) {
-    return (e) => {
+  async function handleSubmit(action) {
+    return async (e) => {
       e.preventDefault()
-      console.log({ action, apartment, ...form })
-      onClose()
+      setCurrentAction(action)
+      setPhase('loading')
+
+      try {
+        const res = await fetch(`${API_BASE}/api/contract/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            form,
+            apartment,
+            blockId,
+            bolimNum,
+            floor,
+            floorImageBase64,
+            overlayViewBox,
+            selectedPolygonPoints,
+            action,
+          }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Server xatosi' }))
+          throw new Error(err.error || `Server xatosi: ${res.status}`)
+        }
+
+        const num = res.headers.get('X-Contract-Number') || 'WENY-XXXX'
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const filename = `shartnoma-${num}.pdf`
+
+        setContractNum(num)
+        setDownloadUrl(url)
+        setDownloadFilename(filename)
+        setPhase('success')
+      } catch (err) {
+        setErrorMsg(err.message)
+        setPhase('error')
+      }
     }
+  }
+
+  function resetForm() {
+    setForm(EMPTY)
+    setFlash(new Set())
   }
 
   const commonFields = (
@@ -276,13 +527,16 @@ export function ApartmentModal({ apartment, floor, blockId, bolimNum, onClose })
     </div>
   )
 
-  const bottomBar = (label, btnClass) => (
+  const bottomBar = (label, btnClass, action) => (
     <div className="px-5 pb-5 pt-3 shrink-0 border-t border-border flex items-stretch gap-3">
       <TabsList className="h-auto! self-stretch p-1 min-w-72">
         <TabsTrigger value="bron" className="h-full! flex-1">Bron qilish</TabsTrigger>
         <TabsTrigger value="sotish" className="h-full! flex-1">Sotish</TabsTrigger>
       </TabsList>
-      <button type="submit" className={`flex-1 py-4 rounded-xl text-white font-semibold text-base active:scale-[0.98] transition-all ${btnClass}`}>
+      <button
+        type="submit"
+        className={`flex-1 py-4 rounded-xl text-white font-semibold text-base active:scale-[0.98] transition-all ${btnClass}`}
+      >
         {label}
       </button>
     </div>
@@ -292,7 +546,7 @@ export function ApartmentModal({ apartment, floor, blockId, bolimNum, onClose })
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
       style={{ backdropFilter: 'blur(4px)' }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && phase === 'idle' && onClose()}
     >
       <div className="relative w-full h-full bg-background rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden">
         {/* Header */}
@@ -303,46 +557,78 @@ export function ApartmentModal({ apartment, floor, blockId, bolimNum, onClose })
             <span className="text-3xl font-bold text-foreground">{bolimNum}-BO'LIM</span>
             <span className="text-3xl text-muted-foreground">→</span>
             <span className="text-3xl font-bold text-foreground">{floor}-QAVAT</span>
+            {apartment.address && (
+              <>
+                <span className="text-3xl text-muted-foreground">→</span>
+                <span className="text-3xl font-bold text-foreground">{apartment.address}</span>
+              </>
+            )}
           </div>
           <div className="flex-1" />
-          <button
-            onClick={() => { setForm(EMPTY); setFlash(new Set()) }}
-            className="w-14 h-14 rounded-full flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors shrink-0"
-            title="Formani tozalash"
-          >
-            <RotateCcw size={22} />
-          </button>
+          {phase === 'idle' && (
+            <button
+              onClick={resetForm}
+              className="w-14 h-14 rounded-full flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors shrink-0"
+              title="Formani tozalash"
+            >
+              <RotateCcw size={22} />
+            </button>
+          )}
           <div className="w-px h-10 bg-border mx-2 shrink-0" />
           <button
             onClick={onClose}
-            className="w-14 h-14 rounded-full flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors shrink-0"
+            disabled={phase === 'loading'}
+            className="w-14 h-14 rounded-full flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
             style={{ fontSize: 42 }}
           >
             ×
           </button>
         </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="bron" className="flex flex-col flex-1 min-h-0">
-          <TabsContent value="bron" className="flex flex-col flex-1 min-h-0 mt-0">
-            <form onSubmit={handleSubmit('bron')} className="flex flex-col flex-1 min-h-0">
-              {formBody(null)}
-              {bottomBar('Bron qilish', 'bg-amber-500 hover:bg-amber-600')}
-            </form>
-          </TabsContent>
+        {/* Body — switches based on phase */}
+        {phase === 'loading' && (
+          <ContractLoading action={currentAction} />
+        )}
 
-          <TabsContent value="sotish" className="flex flex-col flex-1 min-h-0 mt-0">
-            <form onSubmit={handleSubmit('sotish')} className="flex flex-col flex-1 min-h-0">
-              {formBody(
-                <>
-                  <Field label="Passport seriya va raqami" placeholder="AA 1234567" value={form.passport} onChange={set('passport')} required />
-                  <Field label="Yashash manzili" placeholder="Toshkent, Chilonzor tumani..." value={form.manzil} onChange={set('manzil')} required />
-                </>
-              )}
-              {bottomBar('Sotish', 'bg-green-600 hover:bg-green-700')}
-            </form>
-          </TabsContent>
-        </Tabs>
+        {phase === 'success' && (
+          <ContractSuccess
+            contractNum={contractNum}
+            downloadUrl={downloadUrl}
+            filename={downloadFilename}
+            action={currentAction}
+            onClose={onClose}
+          />
+        )}
+
+        {phase === 'error' && (
+          <ContractError
+            message={errorMsg}
+            onRetry={() => setPhase('idle')}
+          />
+        )}
+
+        {phase === 'idle' && (
+          <Tabs defaultValue="bron" className="flex flex-col flex-1 min-h-0">
+            <TabsContent value="bron" className="flex flex-col flex-1 min-h-0 mt-0">
+              <form onSubmit={async (e) => (await handleSubmit('bron'))(e)} className="flex flex-col flex-1 min-h-0">
+                {formBody(null)}
+                {bottomBar('Bron qilish', 'bg-amber-500 hover:bg-amber-600', 'bron')}
+              </form>
+            </TabsContent>
+
+            <TabsContent value="sotish" className="flex flex-col flex-1 min-h-0 mt-0">
+              <form onSubmit={async (e) => (await handleSubmit('sotish'))(e)} className="flex flex-col flex-1 min-h-0">
+                {formBody(
+                  <>
+                    <Field label="Passport seriya va raqami" placeholder="AA 1234567" value={form.passport} onChange={set('passport')} required />
+                    <Field label="Yashash manzili" placeholder="Toshkent, Chilonzor tumani..." value={form.manzil} onChange={set('manzil')} required />
+                  </>
+                )}
+                {bottomBar('Sotish', 'bg-green-600 hover:bg-green-700', 'sotish')}
+              </form>
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
     </div>
   )
